@@ -182,57 +182,114 @@ function recalcPay(){
   `;
 }
 
-/* Paste-only parsing */
+/* ----- PASTE-ONLY PARSER (Clearview-style emails) ----- */
 function parseShiftsFromText(text){
-  const results=[];
-  // 1) Fri Aug 15, 2025 09:00 - 17:00 @ Location
-  const lineRe=/(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\s+([A-Za-z]{3})\s+(\d{1,2}),\s*(\d{4}).*?(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})(?:.*?@?\s*([^\n]+))?/gi;
+  const results = [];
+  const clean = text.replace(/\r/g,''); // normalize
+  const year = inferYearFromPeriod(clean) || new Date().getFullYear();
+
+  // optional department/role header like "Front - Part Time"
+  const dept = (() => {
+    const m = clean.match(/^\s*([A-Za-z ]+)\s*-\s*([A-Za-z ]+)\s*$/m);
+    return m ? `${m[1].trim()} - ${m[2].trim()}` : null;
+  })();
+
+  // Example line:
+  // Aug 12: Tuesday    02:00PM - 06:00PM, 1520 - Tilbury, Store
+  // Aug 11: Monday    (Not Scheduled)
+  const lineRe = new RegExp(
+    String.raw`\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})\s*:\s*` + // month + day:
+    String.raw`(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\s*` +                                     // weekday
+    String.raw`(?:\((?:Not\s*Scheduled)\)|` +                                                  // skip these
+      // time range + trailing comma parts
+      String.raw`([0-9]{1,2}:[0-9]{2}\s*[AP]M)\s*[-–]\s*([0-9]{1,2}:[0-9]{2}\s*[AP]M)\s*,\s*([^\n]+)` +
+    String.raw`)`,
+    'gi'
+  );
+
   let m;
-  while((m=lineRe.exec(text))!==null){
-    const [, , mon, day, year, s, e, loc]=m;
-    const date=new Date(`${mon} ${day}, ${year}`);
-    results.push({ title:'Shift', date: ymd(date), start:s, end:e, location:(loc||'').trim()||null, notes:null, color:'#34d399' });
+  while ((m = lineRe.exec(clean)) !== null) {
+    const [, mon, day, startAMPM, endAMPM, tail] = m;
+
+    // skip "Not Scheduled"
+    if (!startAMPM || !endAMPM) continue;
+
+    // split tail: last chunk is position; the rest (if any) is location
+    // Example tail: "1520 - Tilbury, Store"
+    let location = null, position = null, notes = null;
+    if (tail) {
+      const parts = tail.split(',').map(s => s.trim()).filter(Boolean);
+      if (parts.length >= 1) {
+        position = parts.pop();                     // last = position (Store, Baker, etc.)
+        location = parts.join(', ') || null;        // remaining = location (e.g., "1520 - Tilbury")
+      }
+    }
+
+    const date = ymd(new Date(`${mon} ${Number(day)}, ${year}`));
+    const start24 = to24h(startAMPM);
+    const end24   = to24h(endAMPM);
+    if (!start24 || !end24) continue;
+
+    // put position into the title so it’s visible; keep location separate
+    const title = position ? `Shift — ${position}` : 'Shift';
+    if (dept) notes = `Dept: ${dept}`;
+
+    results.push({
+      title, date, start: start24, end: end24,
+      location: location || null,
+      notes: notes || null,
+      color: '#34d399'
+    });
   }
-  // 2) 2025-08-15 09:00-17:00 (Location)
+
+  // Also keep previous generic patterns as fallback (ISO dates or "Date:/Time:" blocks)
+  const generic = parseGenericFallbacks(clean);
+  return dedupe(results.concat(generic));
+}
+
+function inferYearFromPeriod(text){
+  // “Period: Aug 11, 2025 - Aug 17, 2025”
+  const m = text.match(/Period:\s*[A-Za-z]{3,9}\s+\d{1,2},\s*(\d{4})\s*-\s*[A-Za-z]{3,9}\s+\d{1,2},\s*\d{4}/i);
+  return m ? Number(m[1]) : null;
+}
+
+function parseGenericFallbacks(text){
+  const out = [];
+  // ISO style: 2025-08-15 09:00-17:00 (Location)
+  let m;
   const isoRe=/(\d{4}-\d{2}-\d{2}).{0,10}?(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})(?:.*?\(([^)]+)\))?/g;
   while((m=isoRe.exec(text))!==null){
-    const [, d, s2, e2, loc2]=m;
-    results.push({ title:'Shift', date:d, start:s2, end:e2, location:(loc2||'').trim()||null, notes:null, color:'#34d399' });
+    const [, d, s, e, loc]=m;
+    out.push({ title:'Shift', date:d, start:s, end:e, location:(loc||'').trim()||null, notes:null, color:'#34d399' });
   }
-  // 3) Date: Aug 15, 2025 ... Time: 7:30 AM - 3:30 PM
+  // “Date: Aug 15, 2025 ... Time: 7:30 AM - 3:30 PM”
   const blockRe=/Date:\s*([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4}).*?Time:\s*([0-9:apm\s]+)\s*[-–]\s*([0-9:apm\s]+)/gis;
   while((m=blockRe.exec(text))!==null){
-    const [, ds, sRaw, eRaw]=m; const date=new Date(ds);
+    const [, ds, sRaw, eRaw]=m; const d=new Date(ds);
     const s=to24h(sRaw), e=to24h(eRaw);
-    if(s && e) results.push({ title:'Shift', date: ymd(date), start:s, end:e, location:null, notes:null, color:'#34d399' });
+    if(s&&e) out.push({ title:'Shift', date: ymd(d), start:s, end:e, location:null, notes:null, color:'#34d399' });
   }
-  return dedupe(results);
+  return out;
 }
+
 function to24h(str){
   if(!str) return null;
   const s=str.trim().toUpperCase();
   const m=s.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/);
   if(!m) return null;
   let h=Number(m[1]); const min=Number(m[2]||0); const ap=m[3]||'';
-  if(ap==='PM' && h<12) h+=12;
-  if(ap==='AM' && h===12) h=0;
+  if (ap==='PM' && h<12) h+=12;
+  if (ap==='AM' && h===12) h=0;
   return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
 }
+
 function dedupe(evs){
   const seen=new Set(), out=[];
-  for(const e of evs){ const key=[e.title,e.date,e.start,e.end,e.location].join('|'); if(!seen.has(key)){ seen.add(key); out.push(e); } }
+  for(const e of evs){
+    const key=[e.title,e.date,e.start,e.end,e.location].join('|');
+    if(!seen.has(key)){ seen.add(key); out.push(e); }
+  }
   return out;
-}
-function renderImportPreview(){
-  const wrap=$('#importPreview'); wrap.innerHTML='';
-  if(!state.imports.length){ const d=document.createElement('div'); d.className='muted'; d.textContent='No parsed shifts yet.'; wrap.appendChild(d); return; }
-  const byDate=new Map(); state.imports.forEach(e=>{ const k=e.date; if(!byDate.has(k)) byDate.set(k,[]); byDate.get(k).push(e); });
-  [...byDate.keys()].sort().forEach(d=>{
-    const card=document.createElement('section'); card.className='day-card';
-    card.innerHTML=`<h3>${formatDateHuman(d)}</h3>`;
-    byDate.get(d).sort((a,b)=>(a.start||'24:00').localeCompare(b.start||'24:00')).forEach(ev=>card.appendChild(renderEvent(ev)));
-    wrap.appendChild(card);
-  });
 }
 
 /* Boot */
@@ -321,3 +378,4 @@ function choose(options){
     document.body.appendChild(dlg); dlg.showModal();
   });
 }
+

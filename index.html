@@ -13,9 +13,9 @@
 <body>
   <header class="appbar">
     <div class="left">
-      <button id="btnPrev" aria-label="Previous week">‹</button>
+      <button id="btnPrev" aria-label="Previous week">⬅️</button>
       <button id="btnToday" class="chip">Today</button>
-      <button id="btnNext" aria-label="Next week">›</button>
+      <button id="btnNext" aria-label="Next week">➡️</button>
     </div>
     <div class="center">
       <h1 id="rangeTitle">This Week</h1>
@@ -27,26 +27,26 @@
         <input id="importFile" type="file" accept=".json,application/json" hidden />
       </label>
       <button id="btnInstall" class="primary hidden">Install</button>
-      <button id="btnSettings" class="ghost">⚙</button>
+      <button id="btnSettings" class="ghost" aria-label="Open pay settings">⚙️</button>
     </div>
   </header>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="scheduleTab">Schedule</button>
-    <button class="tab" data-tab="payTab">Pay</button>
-    <button class="tab" data-tab="emailTab">Email</button>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="scheduleTab" role="tab" aria-selected="true">Schedule</button>
+    <button class="tab" data-tab="payTab" role="tab" aria-selected="false">Pay</button>
+    <button class="tab" data-tab="emailTab" role="tab" aria-selected="false">Email</button>
   </nav>
 
   <main id="app">
     <!-- SCHEDULE TAB -->
-    <section id="scheduleTab" class="tabpane active">
+    <section id="scheduleTab" class="tabpane active" role="tabpanel">
       <nav class="weekbar" id="weekbar"></nav>
       <section id="dayList" class="day-list"></section>
       <button id="fab" class="fab" aria-label="Add event">＋</button>
     </section>
 
     <!-- PAY TAB -->
-    <section id="payTab" class="tabpane">
+    <section id="payTab" class="tabpane" role="tabpanel">
       <section class="panel">
         <h2>Pay Settings</h2>
         <div class="form-grid">
@@ -78,34 +78,15 @@
       </section>
     </section>
 
-    <!-- EMAIL TAB -->
-    <section id="emailTab" class="tabpane">
+    <!-- EMAIL TAB (PASTE-ONLY) -->
+    <section id="emailTab" class="tabpane" role="tabpanel">
       <section class="panel">
-        <h2>Email Connection</h2>
-        <p class="muted">Connect Gmail to import shifts automatically. (Read-only access.)</p>
+        <h2>Paste Email Text</h2>
+        <p class="muted">Paste shift emails here. The parser looks for dates and time ranges (e.g., <em>Fri Aug 15, 2025 09:00 - 17:00 @ Store</em> or <em>2025-08-15 09:00-17:00 (Store)</em>).</p>
+        <textarea id="pasteBox" rows="8" placeholder="Paste an email here…"></textarea>
         <div class="actions">
-          <button id="gmailConnect" class="primary">Connect Gmail</button>
-          <button id="gmailDisconnect" class="danger hidden">Disconnect</button>
-          <button id="gmailFetch" class="ghost" disabled>Fetch recent emails</button>
+          <button id="parsePasted" class="ghost">Parse pasted text</button>
         </div>
-
-        <div class="form-grid">
-          <label>Search filter (Gmail query)
-            <input id="gmailQuery" placeholder='from:(no-reply@scheduler.com) OR subject:(schedule OR shift)' />
-          </label>
-          <label>Look back (days)
-            <input id="gmailDays" type="number" min="1" step="1" placeholder="30" />
-          </label>
-        </div>
-
-        <details class="mt">
-          <summary>Or paste email text</summary>
-          <textarea id="pasteBox" rows="6" placeholder="Paste an email here…"></textarea>
-          <div class="actions">
-            <button id="parsePasted" class="ghost">Parse pasted text</button>
-          </div>
-        </details>
-
         <div id="gmailStatus" class="muted mt"></div>
       </section>
 
@@ -177,9 +158,6 @@
     </article>
   </template>
 
-  <script src="config.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="gmail.js"></script>
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {

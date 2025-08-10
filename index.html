@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0ea5e9" />
+  <title>Pocket Schedule+Pay</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+</head>
+<body>
+  <header class="appbar">
+    <div class="left">
+      <button id="btnPrev" aria-label="Previous week">‹</button>
+      <button id="btnToday" class="chip">Today</button>
+      <button id="btnNext" aria-label="Next week">›</button>
+    </div>
+    <div class="center">
+      <h1 id="rangeTitle">This Week</h1>
+    </div>
+    <div class="right">
+      <button id="btnExport" class="ghost">Export</button>
+      <label class="ghost filelabel">
+        Import
+        <input id="importFile" type="file" accept=".json,application/json" hidden />
+      </label>
+      <button id="btnInstall" class="primary hidden">Install</button>
+      <button id="btnSettings" class="ghost">⚙</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="scheduleTab">Schedule</button>
+    <button class="tab" data-tab="payTab">Pay</button>
+    <button class="tab" data-tab="emailTab">Email</button>
+  </nav>
+
+  <main id="app">
+    <!-- SCHEDULE TAB -->
+    <section id="scheduleTab" class="tabpane active">
+      <nav class="weekbar" id="weekbar"></nav>
+      <section id="dayList" class="day-list"></section>
+      <button id="fab" class="fab" aria-label="Add event">＋</button>
+    </section>
+
+    <!-- PAY TAB -->
+    <section id="payTab" class="tabpane">
+      <section class="panel">
+        <h2>Pay Settings</h2>
+        <div class="form-grid">
+          <label>Hourly rate ($)
+            <input id="payRate" type="number" min="0" step="0.01" placeholder="e.g., 18.50" />
+          </label>
+          <label>Overtime after (hrs/week)
+            <input id="otThreshold" type="number" min="0" step="1" placeholder="40" />
+          </label>
+          <label>OT multiplier
+            <input id="otMultiplier" type="number" min="1" step="0.1" placeholder="1.5" />
+          </label>
+          <label>Deduction estimate (%)
+            <input id="deductionPct" type="number" min="0" step="1" placeholder="20" />
+          </label>
+          <label>Last payday (bi-weekly)
+            <input id="lastPayday" type="date" />
+          </label>
+        </div>
+        <div class="actions">
+          <button id="savePay" class="primary">Save</button>
+          <button id="calcNow" class="ghost">Recalculate</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Current Pay Period</h2>
+        <div id="paySummary" class="stats"></div>
+      </section>
+    </section>
+
+    <!-- EMAIL TAB -->
+    <section id="emailTab" class="tabpane">
+      <section class="panel">
+        <h2>Email Connection</h2>
+        <p class="muted">Connect Gmail to import shifts automatically. (Read-only access.)</p>
+        <div class="actions">
+          <button id="gmailConnect" class="primary">Connect Gmail</button>
+          <button id="gmailDisconnect" class="danger hidden">Disconnect</button>
+          <button id="gmailFetch" class="ghost" disabled>Fetch recent emails</button>
+        </div>
+
+        <div class="form-grid">
+          <label>Search filter (Gmail query)
+            <input id="gmailQuery" placeholder='from:(no-reply@scheduler.com) OR subject:(schedule OR shift)' />
+          </label>
+          <label>Look back (days)
+            <input id="gmailDays" type="number" min="1" step="1" placeholder="30" />
+          </label>
+        </div>
+
+        <details class="mt">
+          <summary>Or paste email text</summary>
+          <textarea id="pasteBox" rows="6" placeholder="Paste an email here…"></textarea>
+          <div class="actions">
+            <button id="parsePasted" class="ghost">Parse pasted text</button>
+          </div>
+        </details>
+
+        <div id="gmailStatus" class="muted mt"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Preview of Imported Shifts</h2>
+        <div id="importPreview" class="day-list"></div>
+        <div class="actions">
+          <button id="commitImports" class="primary" disabled>Add to Schedule</button>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <!-- Event Modal -->
+  <dialog id="eventDialog">
+    <form id="eventForm" method="dialog">
+      <header class="modal-title">
+        <h2 id="dialogTitle">Add Event</h2>
+        <button type="button" id="btnClose" aria-label="Close">✕</button>
+      </header>
+      <div class="grid">
+        <label>Title
+          <input name="title" id="title" required maxlength="100" placeholder="e.g., Shift, Biology class" />
+        </label>
+        <label>Date
+          <input name="date" id="date" type="date" required />
+        </label>
+        <div class="row2">
+          <label>Start
+            <input name="start" id="start" type="time" required />
+          </label>
+          <label>End
+            <input name="end" id="end" type="time" required />
+          </label>
+        </div>
+        <label>Location
+          <input name="location" id="location" placeholder="Optional" />
+        </label>
+        <label>Notes
+          <textarea name="notes" id="notes" rows="3" placeholder="Optional"></textarea>
+        </label>
+        <label>Color
+          <div class="colors" id="colorChoices" role="radiogroup" aria-label="Event color"></div>
+          <input type="hidden" id="color" name="color" />
+        </label>
+      </div>
+      <footer class="actions">
+        <button type="button" id="btnDelete" class="danger hidden">Delete</button>
+        <div class="spacer"></div>
+        <button type="button" id="btnDuplicate" class="ghost hidden">Duplicate</button>
+        <button type="submit" class="primary">Save</button>
+      </footer>
+      <input type="hidden" id="eventId" name="eventId" />
+    </form>
+  </dialog>
+
+  <template id="eventItemTmpl">
+    <article class="event">
+      <div class="dot"></div>
+      <div class="meta">
+        <div class="tline">
+          <strong class="title"></strong>
+          <span class="time"></span>
+        </div>
+        <div class="subline location"></div>
+        <div class="subline notes"></div>
+      </div>
+      <button class="edit ghost">Edit</button>
+    </article>
+  </template>
+
+  <script src="config.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="gmail.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js'));
+    }
+  </script>
+</body>
+</html>
